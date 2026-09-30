@@ -1,28 +1,30 @@
-# Bitácora de uso de IA
+# AI usage log
 
-**Assignment 2 — Temporada: 1 de enero al 31 de mayo de 2023**
+**Assignment 2 — Season: January 1 to May 31, 2023**
 
-Herramienta usada: Claude Code (modelos Sonnet 5 y Opus 5).
+Tool used: Claude Code (Sonnet 5 and Opus 5 models).
 
-Este archivo registra los momentos en que la IA entregó código o afirmaciones **incorrectas, incompletas o que no funcionaron**, cómo los detectamos y cómo los corregimos. Todos los casos son reales y verificables contra el historial de commits y las salidas de los notebooks.
+This file records the moments when the AI produced code or claims that were **wrong, incomplete, or simply did not work**, how we caught them, and how we fixed them. Every case is real and can be checked against the commit history and the notebook outputs.
 
-Un patrón se repitió en casi todas las entradas y vale decirlo al principio: **el código generado por IA casi nunca fallaba con un error visible**. Terminaba, imprimía un mensaje de éxito y entregaba datos silenciosamente incorrectos. Encontrar eso obligó a re-ejecutar y comparar resultados, no a leer el código buscando errores de sintaxis.
+One pattern showed up in almost every entry, and it is worth stating up front: **the AI-generated code almost never failed with a visible error**. It finished, printed a success message, and handed back data that was quietly incorrect. Finding those required re-running the notebook and comparing results, not reading the code looking for syntax mistakes.
+
+A note on language: prose, comments and identifiers in this project are in English. Column names, category values, file names and the scraped decree records stay in Spanish, because the assignment specifies them literally and Parts 2 and 3 join on them. A decree title is the legal name of a document published by the Peruvian government, so translating it would falsify the data rather than localize it.
 
 ---
 
-# Parte 1 — Scraping de decretos de emergencia
+# Part 1 — Scraping emergency decrees
 
 Notebook: `01_scraping_emergencias.ipynb`
 
 ---
 
-## Entrada 1 — La pausa entre pedidos quedó fuera del bucle
+## Entry 1 — The pause between requests ended up outside the loop
 
-**1. ¿Qué le pedimos a la IA?**
+**1. What we asked the AI for**
 
-Que implementara el paso 9 de la consigna: visitar la página de cada decreto con `requests` y `BeautifulSoup` para obtener el título completo, con una pausa de 1 segundo entre páginas.
+To implement step 9 of the assignment: visit each decree page with `requests` and BeautifulSoup to get the full title, pausing one second between pages.
 
-**2. ¿Qué respondió?**
+**2. What it answered**
 
 ```python
 # Obtenemos el título completo de cada decreto
@@ -33,52 +35,52 @@ df_pcm["titulo_completo"] = df_pcm["enlace"].apply(obtener_titulo_completo)
 time.sleep(PAUSA_REQUESTS)
 ```
 
-Y dentro de `obtener_titulo_completo`, un `try/except` que ante cualquier fallo imprimía el error y devolvía `None`.
+And inside the fetching function, a `try/except` that printed the error and returned `None` on any failure.
 
-**3. ¿Qué estaba mal y cómo nos dimos cuenta?**
+**3. What was wrong, and how we noticed**
 
-El `time.sleep(PAUSA_REQUESTS)` está **después** del `.apply()`, no dentro. O sea que hacía las 49 peticiones seguidas, sin ninguna pausa, y después dormía 1 segundo una sola vez. La consigna pedía exactamente lo contrario, y la propia celda de texto del notebook explicaba por qué hay que pausar.
+The `time.sleep` call sits **after** the `.apply()`, not inside it. So the code fired all 49 requests back to back with no pause at all, and then slept one second once. The assignment asked for the opposite, and the notebook's own text cell explained why pausing matters.
 
-La consecuencia no fue un error visible. Fue peor: gob.pe cortó dos conexiones por timeout, `obtener_titulo_completo` devolvió `None` para esos dos decretos, y como el resto del notebook clasifica y detecta departamentos a partir del título completo, esos dos decretos **desaparecieron de todo el análisis**. El notebook terminó imprimiendo `✓ Parte 1 completada exitosamente`.
+The consequence was not a visible error. It was worse: gob.pe dropped two connections on timeout, the fetch function returned `None` for those two decrees, and since every later step classifies and detects departments from the full title, those two decrees **disappeared from the entire analysis**. The notebook still finished by printing a success message.
 
-Lo detectamos al ejecutar el notebook dos veces y comparar los CSV generados. Los números cambiaban entre corridas:
+We caught it by running the notebook twice and comparing the generated CSVs. The numbers changed between runs:
 
-| | Corrida A | Corrida B |
+| | Run A | Run B |
 |---|---|---|
-| Normas de lluvia | 20 | 19 |
+| Rainfall regulations | 20 | 19 |
 | Lambayeque | 4 | 3 |
 | Piura | 4 | 3 |
 | Tumbes | 3 | 2 |
 
-Los dos decretos perdidos fueron el `DS N.° 016-2023-PCM` y el `DS N.° 065-2023-PCM`. Un resultado que cambia en cada corrida no es un dato.
+The two lost decrees were `DS N.° 016-2023-PCM` and `DS N.° 065-2023-PCM`. A result that changes on every run is not data.
 
-**4. ¿Cómo lo corregimos?**
+**4. How we fixed it**
 
-Tres cambios:
+Three changes:
 
-- La pausa pasó **dentro** del bucle, reemplazando el `.apply()` por un `for` explícito.
-- `obtener_titulo_completo` ahora reintenta hasta 4 veces con espera creciente (`PAUSA_REQUESTS * intento`), subió el `timeout` de 10 a 30 segundos y agregó `raise_for_status()` para no tragarse respuestas HTTP con error.
-- Se capturan solo `requests.RequestException`, no cualquier excepción.
+- The pause moved **inside** the loop, replacing the `.apply()` with an explicit `for`.
+- The fetch function now retries up to 4 times with a growing wait (`REQUEST_PAUSE * attempt`), raised the timeout from 10 to 30 seconds, and calls `raise_for_status()` so failing HTTP responses are not swallowed.
+- Only `requests.RequestException` is caught, instead of every exception.
 
-Verificación: dos corridas completas seguidas producen ahora CSV **byte a byte idénticos**, y la celda reporta `Títulos obtenidos: 49 de 49`.
+Verification: two consecutive full runs now produce **byte-identical** CSVs, and the cell reports `Titles fetched: 49 of 49`.
 
 ---
 
-## Entrada 2 — Explicación del `robots.txt` que contradecía la salida ya impresa
+## Entry 2 — A robots.txt explanation that contradicted the output printed right above it
 
-**1. ¿Qué le pedimos a la IA?**
+**1. What we asked the AI for**
 
-Que escribiera la celda de texto del paso 1: explicar qué prohíbe el `robots.txt` de gob.pe, si `/busquedas` está permitida y por qué conviene pausar, fijándose en el `Crawl-delay` que el archivo le pide a otros bots.
+To write the text cell for step 1: explain what the gob.pe `robots.txt` forbids, whether `/busquedas` is allowed, and why pausing is a good idea anyway, paying attention to the `Crawl-delay` the file asks of other bots.
 
-**2. ¿Qué respondió?**
+**2. What it answered**
 
-> "**¿Qué prohíbe?** El robots.txt de gob.pe no prohíbe explícitamente la ruta `/busquedas`. No hay reglas `Disallow` que bloqueen el acceso a la página de búsquedas.
+> "**What does it forbid?** The gob.pe robots.txt does not explicitly forbid the `/busquedas` path. There are no `Disallow` rules blocking access to the search page.
 >
-> **¿Por qué igual conviene hacer pausas?** Aunque **no haya un `Crawl-delay` específico** para nuestro bot, hacer pausas de al menos 2 segundos entre páginas es una buena práctica..."
+> **Why pause anyway?** Even though **there is no specific `Crawl-delay`** for our bot, pausing at least 2 seconds between pages is good practice..."
 
-**3. ¿Qué estaba mal y cómo nos dimos cuenta?**
+**3. What was wrong, and how we noticed**
 
-Nos dimos cuenta leyendo la salida de la celda **anterior**, que imprime el `robots.txt` real. El archivo sí trae `Crawl-delay`:
+We noticed by reading the output of the **previous** cell, which prints the actual `robots.txt`. The file does contain `Crawl-delay` directives:
 
 ```
 User-agent: GPTBot
@@ -88,24 +90,24 @@ User-agent: OAI-SearchBot
 Crawl-delay: 2
 ```
 
-La IA escribió la explicación sin mirar el archivo que el propio notebook acababa de descargar. Dos problemas:
+The AI wrote the explanation without looking at the file the notebook had just downloaded. Two problems:
 
-- Afirmó que no había `Crawl-delay`, cuando hay dos, y justamente para bots de IA. Ese dato era el que la consigna pedía usar para justificar la pausa.
-- A la pregunta "¿qué prohíbe?" respondió solo qué **no** prohíbe. Nunca mencionó las reglas que el archivo sí tiene: `Disallow: /admin/`, `Disallow: /*?sheet=`, `Disallow: /*&sheet=` para todos los bots, y `Disallow: /` completo para `AhrefsBot`.
+- It claimed there was no `Crawl-delay` when there are two, and specifically for AI crawlers. That was exactly the fact the assignment asked us to use to justify our pause.
+- Asked "what does it forbid?", it only answered what it does **not** forbid. It never mentioned the rules the file actually has: `Disallow: /admin/`, `Disallow: /*?sheet=` and `Disallow: /*&sheet=` for every bot, plus a full `Disallow: /` for `AhrefsBot`.
 
-**4. ¿Cómo lo corregimos?**
+**4. How we fixed it**
 
-Reescribimos la celda citando el contenido real del archivo: las tres rutas bloqueadas para todos los bots, el bloqueo total a `AhrefsBot`, y los dos `Crawl-delay` de 5 y 2 segundos. Y cambiamos el argumento de fondo: no pausamos "porque es buena práctica" en abstracto, sino porque el propio sitio declara que tolera entre 2 y 5 segundos entre pedidos, y nuestra pausa se justifica con ese número.
+We rewrote the cell quoting the real contents: the three blocked paths, the full block on `AhrefsBot`, and the two `Crawl-delay` values of 5 and 2 seconds. We also changed the underlying argument. We do not pause because "it is good practice" in the abstract, but because the site itself states it tolerates something between 2 and 5 seconds between requests, and our pause is justified by that number.
 
 ---
 
-## Entrada 3 — El código tapaba sus propios fallos
+## Entry 3 — The code covered up its own failures
 
-**1. ¿Qué le pedimos a la IA?**
+**1. What we asked the AI for**
 
-Que implementara el paso 6: la tabla de verificación que compara los resultados extraídos contra el total que declara la página, con la indicación de la consigna de que "si en alguno no coinciden, revisen su código antes de seguir".
+To implement step 6: the verification table comparing extracted results against the total the page reports, following the assignment's instruction that "if any month does not match, review your code before continuing".
 
-**2. ¿Qué respondió?**
+**2. What it answered**
 
 ```python
 if tabla_verificacion["coincide"].all():
@@ -114,7 +116,7 @@ else:
     print("✗ Hay meses que no coinciden. Revisar el código antes de continuar.")
 ```
 
-Y, en la función de scraping, para leer el total de resultados:
+And, inside the scraping function, to read the result count:
 
 ```python
 try:
@@ -125,33 +127,33 @@ except:
     total = 0
 ```
 
-**3. ¿Qué estaba mal y cómo nos dimos cuenta?**
+**3. What was wrong, and how we noticed**
 
-Los dos fragmentos tienen el mismo defecto: **fallan en silencio y dejan seguir al notebook**.
+Both fragments share the same defect: **they fail silently and let the notebook keep going**.
 
-- La verificación solo *imprime* un aviso. Las celdas siguientes se ejecutan igual, con datos incompletos, y al final el notebook declara éxito. Un aviso impreso en la celda 6 de un notebook de 33 celdas no lo va a leer nadie.
-- El `except:` pelado deja `total = 0` ante *cualquier* fallo, incluido un cambio de selector en gob.pe. Y con `total = 0`, la comparación `0 == 0` da `True`: la tabla de verificación diría "coincide" habiendo extraído cero resultados. El mecanismo de control se autoanula.
+- The verification only *prints* a warning. Every later cell runs anyway, on incomplete data, and the notebook ends by declaring success. A warning printed in cell 6 of a 33-cell notebook is a warning nobody will read.
+- The bare `except` leaves `total = 0` on *any* failure, including a selector change on gob.pe. And with `total = 0`, the comparison `0 == 0` evaluates to `True`: the verification table would report a match while having extracted zero results. The safety check cancels itself out.
 
-Lo notamos al revisar qué pasaba en el caso de fallo de la Entrada 1: el notebook había perdido dos decretos y aun así imprimió `✓ Parte 1 completada exitosamente`. Ahí quedó claro que ningún control del notebook era capaz de detener nada.
+We noticed while investigating the failure from Entry 1: the notebook had lost two decrees and still printed its success message. That made it clear no check in the notebook was capable of stopping anything.
 
-**4. ¿Cómo lo corregimos?**
+**4. How we fixed it**
 
-- La celda de verificación ahora hace `raise RuntimeError` nombrando los meses que no coinciden.
-- Después de bajar los títulos, una comprobación nueva lista los decretos sin título y lanza `RuntimeError`, porque sin título completo no se puede clasificar ni detectar departamentos.
-- El `except:` pasó a `except Exception` en el bucle de artículos (donde saltear un resultado con formato raro sí es razonable) y se **eliminó** del conteo de totales: si no se puede leer el total, queremos que reviente.
-- Se agregó un control extra al armar el CSV por departamento: verifica que `declaratorias + prorrogas` sea igual al total de menciones departamento-decreto, y lanza excepción si no cuadra.
+- The verification cell now raises `RuntimeError`, naming the months that do not match.
+- After fetching the titles, a new check lists the decrees with no title and raises, because without the full title we cannot classify a decree or detect its departments.
+- The bare `except` became `except Exception` in the article loop, where skipping a malformed result is reasonable, and was **removed** from the result-count read: if the total cannot be parsed, we want it to blow up.
+- We added one more check when building the per-department CSV: it verifies that `declaratorias + prorrogas` equals the total number of department-decree mentions, and raises if it does not.
 
-La lección: un error silencioso es peor que uno que revienta. El que revienta se arregla; el silencioso se entrega.
+The lesson: a silent error is worse than one that crashes. The one that crashes gets fixed; the silent one gets submitted.
 
 ---
 
-## Entrada 4 — Febrero hardcodeado como día 28
+## Entry 4 — February hardcoded as day 28
 
-**1. ¿Qué le pedimos a la IA?**
+**1. What we asked the AI for**
 
-Una función que, dado un mes y un año, devolviera el rango de fechas `desde`/`hasta` en formato `DD-MM-AAAA` para armar la URL de búsqueda.
+A function that, given a month and a year, returns the `desde`/`hasta` date range in `DD-MM-YYYY` format to build the search URL.
 
-**2. ¿Qué respondió?**
+**2. What it answered**
 
 ```python
 def obtener_rango_fechas(mes, año):
@@ -164,81 +166,81 @@ def obtener_rango_fechas(mes, año):
     ...
 ```
 
-**3. ¿Qué estaba mal y cómo nos dimos cuenta?**
+**3. What was wrong, and how we noticed**
 
-Lo encontramos leyendo la función, no ejecutándola: en 2023 funciona, porque febrero de 2023 tiene 28 días. Pero el último día de febrero está escrito a mano, y **2024 es bisiesto**. Un grupo con la temporada 2024 perdería silenciosamente todos los decretos publicados el 29 de febrero, sin ningún error.
+We found this by reading the function, not by running it. It works for 2023, because February 2023 has 28 days. But the last day of February is written by hand, and **2024 is a leap year**. A group working the 2024 season would silently lose every decree published on February 29, with no error at all.
 
-Es un error que el notebook no puede detectar por sí solo: la tabla de verificación compararía los resultados extraídos contra el total que la página reporta *para ese rango de fechas*, y ambos números coincidirían. El rango es el que está mal.
+This is a bug the notebook cannot detect on its own: the verification table would compare extracted results against the total the page reports *for that date range*, and both numbers would match. The range itself is what is wrong.
 
-De paso, la función tampoco tenía `else`: con un mes fuera de 1–5 devolvía `None` en lugar de avisar.
+The function also had no `else`: given a month outside 1 to 5 it returned `None` instead of complaining.
 
-**4. ¿Cómo lo corregimos?**
+**4. How we fixed it**
 
-Reemplazamos los cinco `if` por el cálculo real del último día del mes:
+We replaced the five `if` branches with the actual last day of the month:
 
 ```python
-ultimo_dia = calendar.monthrange(año, mes)[1]
-return f"01-{mes:02d}-{año}", f"{ultimo_dia}-{mes:02d}-{año}"
+last_day = calendar.monthrange(year, month)[1]
+return f"01-{month:02d}-{year}", f"{last_day}-{month:02d}-{year}"
 ```
 
-Además de arreglar el año bisiesto, la función pasó de 13 líneas a 2 y ahora sirve para cualquier mes, no solo para los cinco de nuestra temporada.
+Besides fixing the leap year, the function went from 13 lines to 2 and now works for any month, not just the five in our season.
 
 ---
 
-## Entrada 5 — Diagnóstico equivocado por no verificar
+## Entry 5 — A wrong diagnosis, from not verifying
 
-**1. ¿Qué le pedimos a la IA?**
+**1. What we asked the AI for**
 
-Revisar la calidad de los títulos guardados en `decretos_lluvias.csv`, después de la limpieza con expresiones regulares que quita el texto sobrante (`DS N° ... PDF ... Descargar`).
+To review the quality of the titles stored in `decretos_lluvias.csv`, after the regex cleanup that strips the trailing boilerplate (`DS N° ... PDF ... Descargar`).
 
-**2. ¿Qué respondió?**
+**2. What it answered**
 
-Que había un bug grave: los títulos estaban cortados a media frase y eso rompía la detección de departamentos. Como evidencia mostró títulos que terminaban así:
+That there was a serious bug: the titles were being cut off mid-sentence, which broke department detection. As evidence it showed titles ending like this:
 
 ```
 ... de las provincias de Nasca, Ica y Palpa del departamento de
 ```
 
-Y el diagnóstico: el `re.sub(r"\s*DS\s+N[°º].*$", "", titulo, flags=re.IGNORECASE | re.DOTALL)` estaba comiéndose parte del título legítimo. Si el título terminaba en `"del departamento de"`, el nombre del departamento se perdía y ese departamento no se contaba.
+And the diagnosis: `re.sub(r"\s*DS\s+N[°º].*$", "", title, flags=re.IGNORECASE | re.DOTALL)` was eating part of the legitimate title. If a title ended in `"del departamento de"`, the department name was lost and that department went uncounted.
 
-**3. ¿Qué estaba mal y cómo nos dimos cuenta?**
+**3. What was wrong, and how we noticed**
 
-**El diagnóstico era falso.** Antes de tocar la expresión regular, comparamos el título guardado contra el HTML real de la página del decreto:
+**The diagnosis was false.** Before touching the regex, we compared the stored title against the real HTML of the decree page:
 
 ```
-GUARDADO: 'Decreto Supremo que declara el Estado de Emergencia en algunos distritos
+STORED: 'Decreto Supremo que declara el Estado de Emergencia en algunos distritos
 de las provincias de Leoncio Prado y Marañón del departamento de Huánuco; y, en
 algunos distritos de las provincias de Nasca, Ica y Palpa del departamento de Ica,
 por impacto de daños a consecuencia de intensas precipitaciones pluviales'
 
-RAW:      '...intensas precipitaciones pluvialesDS N° 044-2023-PCMPDF2 MB\n\n\nDescargar'
+RAW:    '...intensas precipitaciones pluvialesDS N° 044-2023-PCMPDF2 MB\n\n\nDescargar'
 ```
 
-El título guardado estaba **completo**, y la limpieza había funcionado perfectamente. El recorte venía de un `[:230]` en el `print` que la propia IA había usado para inspeccionar los datos. Se equivocó leyendo su propia salida de depuración y construyó un diagnóstico entero sobre eso.
+The stored title was **complete**, and the cleanup had worked exactly as intended. The truncation came from a `[:230]` slice in the AI's own debugging `print`. It misread its own diagnostic output and built an entire diagnosis on top of it.
 
-**4. ¿Cómo lo corregimos?**
+**4. How we fixed it**
 
-No había nada que corregir en el código: la expresión regular quedó como estaba. Lo que corregimos fue el proceso. Si hubiéramos aceptado el diagnóstico, habríamos reescrito una limpieza que funcionaba bien y probablemente introducido un bug real donde no había ninguno.
+There was nothing to fix in the code: the regex stayed as it was. What we fixed was the process. Had we accepted the diagnosis, we would have rewritten a cleanup that worked fine and probably introduced a real bug where there was none.
 
-El decreto que usamos para verificar terminó siendo útil por otro motivo: el `DS N.° 044-2023-PCM` nombra Ica dos veces, como provincia y como departamento, y es justo el ejemplo que la consigna pide para explicar cómo evitamos el doble conteo. Quedó documentado en el notebook.
+The decree we used to check turned out useful for another reason: `DS N.° 044-2023-PCM` names Ica twice, as a province and as a department, and it is exactly the example the assignment asks for when explaining how we avoid double counting. It is now documented in the notebook.
 
 ---
 
-## Entrada 6 — La IA sobrescribió una celda de código con texto
+## Entry 6 — The AI overwrote a code cell with prose
 
-**1. ¿Qué le pedimos a la IA?**
+**1. What we asked the AI for**
 
-Reescribir la celda de texto que explica cómo evitamos contar mal los departamentos, para incluir un ejemplo real de nuestra temporada.
+To rewrite the text cell explaining how we avoid miscounting departments, so it would include a real example from our season.
 
-**2. ¿Qué respondió?**
+**2. What it answered**
 
-Editó el notebook y reportó el cambio como exitoso.
+It edited the notebook and reported the change as successful.
 
-**3. ¿Qué estaba mal y cómo nos dimos cuenta?**
+**3. What was wrong, and how we noticed**
 
-Escribió el texto en la celda equivocada: **reemplazó la celda de código** que contenía la función `detectar_departamentos` y el armado de `df_departamentos`. La celda quedó marcada como código, pero con texto Markdown dentro. La celda de texto original siguió ahí, sin cambios.
+It wrote the prose into the wrong cell: it **replaced the code cell** holding the `detectar_departamentos` function and the construction of the per-department table. The cell stayed marked as code but contained Markdown text. The original text cell was still there, untouched.
 
-Lo detectamos al re-ejecutar el notebook completo, que falló así:
+We caught it by re-running the whole notebook, which failed like this:
 
 ```
 Cell In[12], line 5
@@ -247,20 +249,69 @@ Cell In[12], line 5
 SyntaxError: invalid character '—' (U+2014)
 ```
 
-Si nos hubiéramos confiado del reporte de éxito de la IA sin re-ejecutar, habríamos entregado un notebook que no corre y sin la función que calcula el archivo de salida principal. Es exactamente el escenario que la consigna advierte.
+Had we trusted the AI's success report without re-running, we would have submitted a notebook that does not run and that is missing the function computing the main output file. That is exactly the scenario the assignment warns about.
 
-**4. ¿Cómo lo corregimos?**
+**4. How we fixed it**
 
-Listamos el índice completo del notebook con `nbformat` para ver el tipo y el contenido real de cada celda, confirmamos qué se había perdido, restauramos el código de `detectar_departamentos` en su celda, pusimos el texto nuevo en la celda de texto correcta y movimos la sección de limitaciones al final, después del guardado de archivos. Después volvimos a ejecutar el notebook de principio a fin y verificamos que las 14 celdas de código tuvieran `execution_count` no nulo y cero salidas de error.
+We listed the notebook's full cell index with `nbformat` to see the real type and content of every cell, confirmed what had been lost, restored the detection code in its own cell, put the new prose in the correct text cell, and moved the limitations section to the end, after the file-saving step. Then we re-ran the notebook from top to bottom and checked that every code cell had a non-null `execution_count` and zero error outputs.
 
 ---
 
-## Verificación final de la Parte 1
+## Entry 7 — Stripping accents would have silently zeroed five departments
 
-No alcanzaba con que el notebook corriera. Los controles que quedaron en el entregable:
+**1. What we asked the AI for**
 
-1. Las 14 celdas de código ejecutadas, sin ninguna salida de error.
-2. Tabla de verificación con `coincide == True` en los 5 meses (11, 9, 14, 11 y 8 resultados).
-3. `Títulos obtenidos: 49 de 49`.
-4. `declaratorias + prorrogas` = 78 = total de menciones departamento-decreto.
-5. **Dos corridas completas seguidas producen CSV idénticos.** Es la prueba de que el problema de la Entrada 1 está resuelto: mientras existía, cada corrida daba números distintos.
+To write the department names without accents in the output data, so Part 3 can join tables without name mismatches.
+
+**2. What it answered**
+
+The obvious move: rewrite the `DEPARTMENTS` list without accents.
+
+```python
+DEPARTMENTS = [
+    "Amazonas", "Ancash", "Apurimac", ..., "Huanuco", ..., "Junin", ..., "San Martin", ...
+]
+```
+
+**3. What was wrong, and how we noticed**
+
+That change alone would have destroyed the data, without any error message. Detection searches each department name inside the decree title, and **gob.pe writes the accented spelling**. Searching `Ancash` against a title containing `Áncash` matches nothing.
+
+We measured it before applying the change, against the 20 rainfall decrees of the season:
+
+| Department | Accented, in titles | Plain, in titles |
+|---|---|---|
+| Áncash | 7 | 0 |
+| Huánuco | 4 | 0 |
+| San Martín | 4 | 0 |
+| Junín | 2 | 0 |
+| Apurímac | 1 | 0 |
+
+Eighteen department-decree mentions would have vanished. Ancash, the second most affected department of the season, would have reported 0 declarations. Nothing would have crashed, and the CSV would have looked perfectly normal.
+
+**4. How we fixed it**
+
+We separated the two concerns. The accent-free name is what gets **stored**; the accents are stripped from the **title** before searching, with a `strip_accents` helper built on `unicodedata`:
+
+```python
+def strip_accents(text):
+    decomposed = unicodedata.normalize("NFD", text)
+    return "".join(char for char in decomposed if unicodedata.category(char) != "Mn")
+```
+
+There was a second trap in the same change. Unicode normalization also turns `ñ` into `n`, so applying `strip_accents` to the classification step would convert `daños` into `danos` and break the `impacto de daños` test. The stripping is therefore scoped to department detection only, and section 10 of the notebook states why.
+
+Verification: a dedicated cell now prints, for each accented name, how many titles contain it and how many the accent-free name ends up counting. They match (7 and 7, 4 and 4, and so on), and the total stayed at 78 department-decree mentions.
+
+---
+
+## Final verification of Part 1
+
+It was not enough for the notebook to run. These are the checks that stayed in the deliverable:
+
+1. All 14 code cells executed, with no error output.
+2. Verification table with `coincide == True` for all 5 months (11, 9, 14, 11 and 8 results).
+3. `Titles fetched: 49 of 49`.
+4. `declaratorias + prorrogas` = 78 = total department-decree mentions.
+5. Every accented department name in the titles is counted under its accent-free name, one to one.
+6. **Two consecutive full runs produce identical CSVs.** This is the proof that the problem from Entry 1 is resolved: while it existed, every run produced different numbers.
