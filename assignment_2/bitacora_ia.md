@@ -364,3 +364,43 @@ The output shows `Missing: set()` and `Extra: set()`, so the names match Part 1 
 3. Geocoding: all 25 results have `country_code == "PE"`, `admin1` matches the department in all 25 rows, and every coordinate falls inside Peru's latitude/longitude range. Ayacucho, Ica and Lima each returned 10 places with only one in Peru.
 4. Rainfall: all 25 departments received 151 days (January 1 to May 31, 2023) and **0 days came back as `None`**.
 5. `datos/lluvias_por_departamento.csv` saved with 25 rows and the 6 columns the assignment asks for.
+
+---
+
+# Part 3 — Merge by ubigeo and analysis
+
+Notebook: `03_merge_analysis.ipynb`
+
+---
+
+## Entry 9 — The bar chart showed 14 departments instead of 10
+
+**1. What we asked the AI for**
+
+Step 8: a Plotly bar chart with the 10 departments with the most declarations.
+
+**2. What it answered**
+
+```python
+top_declaratorias = tabla_final.nlargest(10, "declaratorias", keep="all")
+```
+
+Its justification, in the text cell: positions 9 to 14 are six departments tied at 3 declarations each, so cutting at exactly 10 would depend on row order.
+
+**3. What was wrong, and how we noticed**
+
+The cell printed `Departments in the chart: 14`. The point about the tie is valid, but the AI resolved it by changing the deliverable on its own: the assignment asks for 10. Without that print, the four extra bars would have gone unnoticed.
+
+**4. How we fixed it**
+
+We dropped `keep="all"` and documented the tie in the text cell instead: it now states that only the first two of the six tied departments appear in the chart.
+
+---
+
+## Final verification of Part 3
+
+1. The notebook runs from top to bottom after restarting the kernel, with no error output.
+2. Final table: 25 rows, with Madre de Dios at 0 instead of disappearing.
+3. 72 declarations before and after the merge: the join by ubigeo lost nothing.
+4. `tabla_final.csv` stores the ubigeo as 2-digit text (`01`), verified by reading the file back.
+5. Bar chart: exactly 10 departments.
