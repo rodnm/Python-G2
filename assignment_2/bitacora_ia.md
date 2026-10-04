@@ -14,7 +14,7 @@ A note on language: prose, comments and identifiers in this project are in Engli
 
 # Part 1 — Scraping emergency decrees
 
-Notebook: `01_scraping_emergencias.ipynb`
+Notebook: `scraping_emergencias.ipynb`
 
 ---
 
@@ -369,7 +369,7 @@ The output shows `Missing: set()` and `Extra: set()`, so the names match Part 1 
 
 # Part 3 — Merge by ubigeo and analysis
 
-Notebook: `03_merge_analysis.ipynb`
+Notebook: `cruce_analisis.ipynb`
 
 ---
 
