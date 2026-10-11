@@ -48,4 +48,14 @@ col2.metric("Total declarations", int(df_filtrado["declaratorias"].sum()))
 col3.metric("Average rainfall (mm)", f"{df_filtrado['lluvia_total_mm'].mean():,.1f}")
 col4.metric("Avg. days of heavy rain", f"{df_filtrado['dias_lluvia_fuerte'].mean():.1f}")
 
-st.dataframe(df_filtrado)
+st.subheader("Filtered data")
+st.dataframe(df_filtrado, width="stretch", hide_index=True)
+
+st.download_button(
+    label="Download filtered data (CSV)",
+    data=df_filtrado.to_csv(index=False).encode("utf-8-sig"),
+    file_name="filtered_data.csv",
+    mime="text/csv",
+)
+
+st.caption("Source: PCM emergency decrees (gob.pe) and Open-Meteo, Jan-May 2023. Own elaboration.")
