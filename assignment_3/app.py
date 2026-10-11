@@ -3,6 +3,7 @@ import unicodedata
 
 import folium
 import geopandas as gpd
+import mapclassify
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -17,10 +18,18 @@ REPO = "https://github.com/rodnm/Python-G2/blob/main/assignment_3"
 
 FUENTE = "Source: PCM emergency decrees (gob.pe) and Open-Meteo, Jan-May 2023. Own elaboration."
 
-# The same color means the same variable on the whole page: blue for rainfall,
-# orange for emergency declarations (as in the maps of Part 2)
-AZUL = "#2171b5"
-NARANJA_OSCURO, NARANJA_CLARO = "#d94801", "#fdbe85"
+# Kanagawa Wave palette (github.com/rebelot/kanagawa.nvim), the same as the theme in
+# .streamlit/config.toml. The same color means the same variable on the whole page:
+# blues for rainfall, warm tones for emergency declarations.
+FONDO = "#1F1F28"        # sumiInk3
+GRIS = "#54546D"         # sumiInk6
+TEXTO_SUAVE = "#727169"  # fujiGray
+AZUL = "#7E9CD8"         # crystalBlue
+NARANJA = "#FFA066"      # surimiOrange
+OCRE = "#938056"         # boatYellow1
+# Five tones from low to high, for the map classes and the color scales
+TONOS_LLUVIA = ["#2D4F67", "#658594", "#7E9CD8", "#7FB4CA", "#A3D4D5"]  # waveBlue2 to lightBlue
+TONOS_DECL = ["#938056", "#C0A36E", "#DCA561", "#FFA066", "#FF5D62"]    # boatYellow1 to peachRed
 
 
 @st.cache_data
@@ -63,19 +72,33 @@ def lista(nombres):
 
 
 def estilo(fig, titulo, alto):
-    """Same look as the charts of Part 1: conclusion title and source note."""
+    """Conclusion title and source note, as in Part 1. Background and fonts come
+    from the Streamlit theme."""
     fig.update_layout(
         title=dict(text=f"<b>{titulo}</b>", font_size=18),
-        template="plotly_white",
-        font=dict(family="Arial", size=13),
+        font=dict(size=13),
         height=alto,
         margin=dict(l=10, r=40, t=70, b=110),
         annotations=list(fig.layout.annotations) + [dict(
             text=FUENTE, showarrow=False, xref="paper", yref="paper",
-            x=0, y=0, yshift=-80, yanchor="top", font=dict(size=11, color="gray"),
+            x=0, y=0, yshift=-80, yanchor="top", font=dict(size=11, color=TEXTO_SUAVE),
         )],
     )
     return fig
+
+
+@st.cache_data
+def clases(tabla, columna):
+    """Five quantile classes of the whole table (as in the Part 2 maps), with legend
+    labels that show the lowest and highest value inside each class."""
+    quantiles = mapclassify.Quantiles(tabla[columna], k=5)
+    clase_por_ubigeo = dict(zip(tabla["ubigeo"], quantiles.yb.tolist()))
+    etiquetas = []
+    for c in range(quantiles.k):
+        grupo = tabla.loc[quantiles.yb == c, columna]
+        bajo, alto = f"{grupo.min():,.0f}", f"{grupo.max():,.0f}"
+        etiquetas.append(bajo if bajo == alto else f"{bajo}–{alto}")
+    return clase_por_ubigeo, etiquetas
 
 
 tabla = cargar_datos(RUTA)
@@ -185,7 +208,7 @@ with st.container(border=True):
             grupo=lambda d: d["declaratorias"].eq(maximo).map({True: "Most", False: "Rest"}))
         fig = px.bar(barras, x="declaratorias", y="departamento", orientation="h",
                      color="grupo", text="declaratorias",
-                     color_discrete_map={"Most": NARANJA_OSCURO, "Rest": NARANJA_CLARO},
+                     color_discrete_map={"Most": NARANJA, "Rest": OCRE},
                      labels={"declaratorias": "Emergency declarations", "departamento": "Department"})
         fig.update_traces(textposition="outside", cliponaxis=False)
         fig.update_layout(showlegend=False, bargap=0.25, xaxis=dict(showgrid=False),
@@ -215,16 +238,16 @@ with st.container(border=True):
             fig = px.scatter(df_filtrado, x="lluvia_total_mm", y="declaratorias",
                              hover_name="departamento",
                              text="departamento" if len(df_filtrado) <= 12 else None,
-                             color="dias_lluvia_fuerte", color_continuous_scale="Blues",
+                             color="dias_lluvia_fuerte", color_continuous_scale=TONOS_LLUVIA,
                              range_color=(0, int(tabla["dias_lluvia_fuerte"].max())),
                              labels={"lluvia_total_mm": "Total rainfall (mm)",
                                      "declaratorias": "Emergency declarations",
                                      "dias_lluvia_fuerte": "Days with<br>20+ mm"})
             fig.update_traces(textposition="top center", textfont_size=10,
-                              marker=dict(size=12, line=dict(width=1, color="gray")))
+                              marker=dict(size=12, line=dict(width=1, color=TEXTO_SUAVE)))
             # Medians of the whole table: the quadrant analysis of Part 1
-            fig.add_vline(x=mediana_lluvia, line_dash="dot", line_width=1, line_color="gray")
-            fig.add_hline(y=mediana_decl, line_dash="dot", line_width=1, line_color="gray")
+            fig.add_vline(x=mediana_lluvia, line_dash="dot", line_width=1, line_color=TEXTO_SUAVE)
+            fig.add_hline(y=mediana_decl, line_dash="dot", line_width=1, line_color=TEXTO_SUAVE)
             st.plotly_chart(estilo(fig, titulo, 560), width="stretch")
             st.caption(f"Dotted lines: medians of all 25 departments ({mediana_lluvia:,.0f} mm "
                        f"and {mediana_decl:.0f} declarations). Points at the bottom right got "
@@ -258,55 +281,63 @@ with st.container(border=True):
     st.subheader("Map")
     variable = st.segmented_control("Color the map by", ["Total rainfall", "Emergency declarations"],
                                     default="Total rainfall", required=True)
-    columna, paleta, leyenda = {
-        "Total rainfall": ("lluvia_total_mm", "Blues", "Total rainfall, January to May 2023 (mm)"),
-        "Emergency declarations": ("declaratorias", "Oranges", "Emergency declarations, January to May 2023"),
+    columna, tonos, leyenda = {
+        "Total rainfall": ("lluvia_total_mm", TONOS_LLUVIA, "Total rainfall (mm)"),
+        "Emergency declarations": ("declaratorias", TONOS_DECL, "Emergency declarations"),
     }[variable]
 
-    # Quantile classes of the whole table, so the colors keep their meaning when filtering
-    cortes = sorted(set(tabla[columna].quantile([0, 0.2, 0.4, 0.6, 0.8, 1]).tolist()))
+    # Classes of the whole table, so the colors keep their meaning when filtering
+    clase_por_ubigeo, etiquetas = clases(tabla, columna)
+    tonos = tonos[len(tonos) - len(etiquetas):]
     seleccion = mapa_datos[mapa_datos["ubigeo"].isin(df_filtrado["ubigeo"])][
         ["ubigeo", "departamento", "declaratorias", "lluvia_total_mm", "geometry"]]
 
-    mapa = folium.Map(location=[-9.2, -75], zoom_start=5, tiles="Esri.WorldGrayCanvas")
+    # No basemap: the departments sit on the Kanagawa background. Wheel zoom is off so
+    # scrolling the page does not zoom the map; the +/- buttons still work.
+    mapa = folium.Map(location=[-9.2, -75], zoom_start=5, tiles=None, scrollWheelZoom=False)
+    mapa.get_root().header.add_child(folium.Element(
+        f"<style>.leaflet-container {{ background: {FONDO}; }}</style>"))
     # Frame the selected departments, so the map zooms in when the filters narrow the view
     minx, miny, maxx, maxy = seleccion.total_bounds
     mapa.fit_bounds([[miny, minx], [maxy, maxx]], max_zoom=8)
-    # Departments left out by the filters stay on the map in gray
+    # Departments left out by the filters stay as a faint outline
     folium.GeoJson(
         mapa_datos[["geometry"]],
-        style_function=lambda _: {"fillColor": "#e6e6e6", "color": "white", "weight": 1,
-                                  "fillOpacity": 0.7},
+        style_function=lambda _: {"fillColor": GRIS, "fillOpacity": 0.2, "color": GRIS,
+                                  "weight": 0.8},
     ).add_to(mapa)
-    coropleta = folium.Choropleth(
-        geo_data=seleccion,
-        data=df_filtrado,
-        columns=["ubigeo", columna],
-        key_on="feature.properties.ubigeo",
-        bins=cortes,
-        fill_color=paleta,
-        fill_opacity=0.85,
-        line_color="white",
-        line_weight=1,
-        highlight=True,
-        legend_name=leyenda,
+    folium.GeoJson(
+        seleccion,
+        style_function=lambda f: {"fillColor": tonos[clase_por_ubigeo[f["properties"]["ubigeo"]]],
+                                  "fillOpacity": 0.9, "color": FONDO, "weight": 1},
+        highlight_function=lambda _: {"weight": 2.5, "color": "#DCD7BA"},  # fujiWhite
+        tooltip=folium.GeoJsonTooltip(
+            fields=["departamento", "declaratorias", "lluvia_total_mm"],
+            aliases=["Department:", "Emergency declarations:", "Total rainfall (mm):"],
+            localize=True,
+            style=("background-color: #2A2A37; color: #DCD7BA; border: 1px solid #54546D; "
+                   "font-family: sans-serif;"),
+        ),
     ).add_to(mapa)
-    folium.GeoJsonTooltip(
-        fields=["departamento", "declaratorias", "lluvia_total_mm"],
-        aliases=["Department:", "Emergency declarations:", "Total rainfall (mm):"],
-        localize=True,
-    ).add_to(coropleta.geojson)
 
     # returned_objects=[] so moving or zooming the map does not rerun the whole app
     st_folium(mapa, height=520, use_container_width=True, returned_objects=[])
+
+    # Legend drawn by Streamlit, so it follows the theme
+    muestras = "".join(
+        f"<span style='display:inline-block; width:0.8rem; height:0.8rem; background:{tono}; "
+        f"border-radius:2px; margin:0 0.3rem 0 1rem; vertical-align:middle'></span>{etiqueta}"
+        for tono, etiqueta in zip(tonos, etiquetas))
+    st.markdown(f"<div style='font-size:0.9rem'><b>{leyenda}</b> (quantile classes of all "
+                f"departments){muestras}</div>", unsafe_allow_html=True)
 
     sin_mapa = tabla.loc[~tabla["ubigeo"].isin(mapa_datos["ubigeo"]), "departamento"].tolist()
     if sin_mapa:
         st.warning(f"Departments without a boundary on the map: {', '.join(sin_mapa)}")
     else:
         st.caption(f"Join by ubigeo (read as text): all {len(mapa_datos)} departments matched "
-                   "their boundary. Hover over a department to see its values; gray departments "
-                   "are left out by the filters.")
+                   "their boundary. Hover over a department to see its values; the faint "
+                   "outlines are departments left out by the filters.")
 
 # --- Data table ---------------------------------------------------------------
 with st.container(border=True):
