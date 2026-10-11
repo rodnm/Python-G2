@@ -173,7 +173,11 @@ with st.sidebar:
         "capital of each department.\n\n"
         f"**Notebooks.** [Part 1: charts]({REPO}/visualizacion.ipynb) · "
         f"[Part 2: maps]({REPO}/mapas.ipynb)\n\n"
-        "**Group 02** · Fundamentos de Python, Diplomado PUCP"
+        "**Group 02** · Fundamentos de Python, Diplomado PUCP\n\n"
+        "- Renato Christian Gates Rojas ([@RenatoGates](https://github.com/RenatoGates))\n"
+        "- Rodrigo Andres Norabuena Mascaraqui ([@rodnm](https://github.com/rodnm))\n"
+        "- Ana Karen Zamalloa Lima ([@anakaren-zl](https://github.com/anakaren-zl))\n"
+        "- Ina Lizbeth Huaman Malpartida ([@lizzie28-beep](https://github.com/lizzie28-beep))"
     )
 
 df_filtrado = tabla[
