@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import unicodedata
 
 import folium
@@ -14,6 +15,7 @@ st.set_page_config(page_title="Emergencies and rainfall 2023", page_icon="🌧�
 # Paths relative to this file, so it works on any computer and on Streamlit Cloud
 RUTA = Path(__file__).parent / "datos" / "tabla_final.csv"
 RUTA_MAPA = Path(__file__).parent / "datos" / "departamentos_peru.geojson"
+RUTA_DECRETOS = Path(__file__).parent / "datos" / "decretos_lluvias.csv"
 REPO = "https://github.com/rodnm/Python-G2/blob/main/assignment_3"
 
 FUENTE = "Source: PCM emergency decrees (gob.pe) and Open-Meteo, Jan-May 2023. Own elaboration."
@@ -30,6 +32,14 @@ OCRE = "#938056"         # boatYellow1
 # Five tones from low to high, for the map classes and the color scales
 TONOS_LLUVIA = ["#2D4F67", "#658594", "#7E9CD8", "#7FB4CA", "#A3D4D5"]  # waveBlue2 to lightBlue
 TONOS_DECL = ["#938056", "#C0A36E", "#DCA561", "#FFA066", "#FF5D62"]    # boatYellow1 to peachRed
+
+MESES = {"enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5}
+MOTIVOS = {"peligro inminente": "Before the damage (imminent danger)",
+           "impacto de daños": "After the damage",
+           "otro": "Other"}
+COLOR_MOTIVO = {"Before the damage (imminent danger)": "#7AA89F",  # waveAqua2
+                "After the damage": "#E46876",                     # waveRed
+                "Other": TEXTO_SUAVE}
 
 
 @st.cache_data
@@ -63,6 +73,27 @@ def cargar_mapa(ruta, tabla):
             .merge(tabla, on="ubigeo", how="inner", validate="one_to_one"))
 
 
+@st.cache_data
+def cargar_decretos(ruta, departamentos):
+    """The 20 decrees of the season, with their date, reason and the departments they cover.
+
+    The departments come from the decree title. 'Lima' is a single department that
+    includes Lima Metropolitana and Lima provincias (as INEI reports it), so a decree
+    that names both still counts once: each decree keeps a set of departments.
+    """
+    d = pd.read_csv(ruta, encoding="utf-8-sig")
+    partes = d["fecha"].str.extract(r"(\d{1,2}) de (\w+) de (\d{4})")
+    d["publicado"] = pd.to_datetime(pd.DataFrame({
+        "year": partes[2].astype(int), "month": partes[1].str.lower().map(MESES),
+        "day": partes[0].astype(int)}))
+    d["motivo_en"] = d["motivo"].map(MOTIVOS).fillna("Other")
+    d["tipo_en"] = d["tipo"].map({"declara": "Declaration", "prorroga": "Extension"})
+    patrones = {dep: re.compile(rf"\b{re.escape(normalizar(dep))}\b") for dep in departamentos}
+    d["departamentos"] = d["titulo"].map(
+        lambda titulo: sorted(dep for dep, patron in patrones.items() if patron.search(normalizar(titulo))))
+    return d.sort_values("publicado").reset_index(drop=True)
+
+
 def lista(nombres):
     """'Lima', 'Lima and Loreto', 'Lima, Loreto and Piura'."""
     nombres = list(nombres)
@@ -71,7 +102,7 @@ def lista(nombres):
     return ", ".join(nombres[:-1]) + " and " + nombres[-1]
 
 
-def estilo(fig, titulo, alto):
+def estilo(fig, titulo, alto, fuente=FUENTE):
     """Conclusion title and source note, as in Part 1. Background and fonts come
     from the Streamlit theme."""
     fig.update_layout(
@@ -80,7 +111,7 @@ def estilo(fig, titulo, alto):
         height=alto,
         margin=dict(l=10, r=40, t=70, b=110),
         annotations=list(fig.layout.annotations) + [dict(
-            text=FUENTE, showarrow=False, xref="paper", yref="paper",
+            text=fuente, showarrow=False, xref="paper", yref="paper",
             x=0, y=0, yshift=-80, yanchor="top", font=dict(size=11, color=TEXTO_SUAVE),
         )],
     )
@@ -103,6 +134,7 @@ def clases(tabla, columna):
 
 tabla = cargar_datos(RUTA)
 mapa_datos = cargar_mapa(RUTA_MAPA, tabla)
+decretos = cargar_decretos(RUTA_DECRETOS, tuple(tabla["departamento"]))
 MIN_DECL, MAX_DECL = int(tabla["declaratorias"].min()), int(tabla["declaratorias"].max())
 
 # Filter state lives in session_state, so "Reset filters" can clear it
@@ -189,8 +221,9 @@ col4.metric(
 # --- Charts -------------------------------------------------------------------
 with st.container(border=True):
     st.subheader("Charts")
-    tab_barras, tab_dispersion, tab_hist = st.tabs(
-        ["Declarations by department", "Rainfall vs declarations", "Rainfall distribution"]
+    tab_barras, tab_dispersion, tab_hist, tab_decretos = st.tabs(
+        ["Declarations by department", "Rainfall vs declarations", "Rainfall distribution",
+         "Decrees over time"]
     )
 
     with tab_barras:
@@ -275,6 +308,58 @@ with st.container(border=True):
         fig.update_traces(textposition="outside", cliponaxis=False)
         fig.update_layout(bargap=0.08, yaxis=dict(showgrid=False, dtick=1))
         st.plotly_chart(estilo(fig, titulo, 480), width="stretch")
+
+    with tab_decretos:
+        # A second source: the decrees themselves, with their publication date and reason
+        elegidos = set(df_filtrado["departamento"])
+        dec = decretos[decretos["departamentos"].map(lambda deps: bool(elegidos & set(deps)))]
+        if dec.empty:
+            st.info("None of the 20 decrees of the season covers the selected departments.")
+        else:
+            n_dec = len(dec)
+            antes = int((dec["motivo"] == "peligro inminente").sum())
+            palabra = "decree" if n_dec == 1 else "decrees"
+            if antes == 0:
+                titulo = f"None of the {n_dec} {palabra} for these departments came before the damage"
+            elif antes <= n_dec / 2:
+                titulo = f"Only {antes} of the {n_dec} {palabra} for these departments came before the damage"
+            else:
+                titulo = f"{antes} of the {n_dec} {palabra} for these departments came before the damage"
+
+            meses = ["January", "February", "March", "April", "May"]
+            conteo = (dec.assign(mes=dec["publicado"].dt.month_name())
+                      .groupby(["mes", "motivo_en"]).size()
+                      .reindex(pd.MultiIndex.from_product([meses, list(MOTIVOS.values())],
+                                                          names=["mes", "motivo_en"]), fill_value=0)
+                      .rename("decretos").reset_index())
+            fig = px.bar(conteo, x="mes", y="decretos", color="motivo_en",
+                         text=conteo["decretos"].where(conteo["decretos"] > 0, ""),
+                         category_orders={"mes": meses, "motivo_en": list(MOTIVOS.values())},
+                         color_discrete_map=COLOR_MOTIVO,
+                         labels={"mes": "Month of publication", "decretos": "Number of decrees",
+                                 "motivo_en": ""})
+            fig.update_layout(bargap=0.35, yaxis=dict(showgrid=False, dtick=1),
+                              legend=dict(orientation="h", y=1.08, x=0))
+            st.plotly_chart(estilo(fig, titulo, 480, fuente="Source: PCM emergency decrees (gob.pe), "
+                                   "Jan-May 2023. Own elaboration."), width="stretch")
+
+            st.dataframe(
+                dec.assign(cubiertos=dec["departamentos"].map(
+                    lambda deps: ", ".join(d for d in deps if d in elegidos))),
+                width="stretch", hide_index=True,
+                column_order=["publicado", "numero", "tipo_en", "motivo_en", "cubiertos", "enlace"],
+                column_config={
+                    "publicado": st.column_config.DateColumn("Published", format="D MMM YYYY"),
+                    "numero": st.column_config.TextColumn("Decree"),
+                    "tipo_en": st.column_config.TextColumn("Type"),
+                    "motivo_en": st.column_config.TextColumn("Reason"),
+                    "cubiertos": st.column_config.TextColumn("Selected departments it covers"),
+                    "enlace": st.column_config.LinkColumn("Source", display_text="gob.pe"),
+                },
+            )
+            st.caption("One decree usually covers several departments. Extensions prolong an "
+                       "emergency already declared. Lima counts as one department (Lima "
+                       "Metropolitana and Lima provincias together, as INEI reports it).")
 
 # --- Map ----------------------------------------------------------------------
 with st.container(border=True):
