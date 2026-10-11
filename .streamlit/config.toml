@@ -1,0 +1,5 @@
+# Theme for the Assignment 3 dashboard (assignment_3/app.py).
+# Streamlit Community Cloud only reads this file at the root of the repository,
+# even when the app lives in a subfolder.
+[theme]
+primaryColor = "#2171b5"
