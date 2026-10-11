@@ -43,11 +43,11 @@ The notebooks add a third result: only 3 of the 20 decrees were issued for immin
 
 ## Run it locally
 
-From this folder:
+From the root of the repository, the same way Streamlit Community Cloud runs it (so the theme in `.streamlit/config.toml` is applied):
 
 ```bash
-pip install -r requirements.txt
-streamlit run app.py
+pip install -r assignment_3/requirements.txt
+streamlit run assignment_3/app.py
 ```
 
 To rerun the notebooks with static PNG charts, also install `kaleido` (it needs Google Chrome). Without it the notebooks still run, with interactive charts only.
