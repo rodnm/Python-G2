@@ -335,7 +335,7 @@ with st.container(border=True):
     if sin_mapa:
         st.warning(f"Departments without a boundary on the map: {', '.join(sin_mapa)}")
     else:
-        st.caption(f"Join by ubigeo (read as text): all {len(mapa_datos)} departments matched "
+        st.caption(f"Join by ubigeo: all {len(mapa_datos)} departments matched "
                    "their boundary. Hover over a department to see its values; the faint "
                    "outlines are departments left out by the filters.")
 
