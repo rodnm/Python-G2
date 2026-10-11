@@ -38,4 +38,14 @@ df_filtrado = tabla[
     & tabla["declaratorias"].between(*rango_decl)
 ]
 
+if df_filtrado.empty:
+    st.warning("No department matches the filters.")
+    st.stop()
+
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Departments", len(df_filtrado))
+col2.metric("Total declarations", int(df_filtrado["declaratorias"].sum()))
+col3.metric("Average rainfall (mm)", f"{df_filtrado['lluvia_total_mm'].mean():,.1f}")
+col4.metric("Avg. days of heavy rain", f"{df_filtrado['dias_lluvia_fuerte'].mean():.1f}")
+
 st.dataframe(df_filtrado)
