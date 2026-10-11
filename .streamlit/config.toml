@@ -1,0 +1,29 @@
+# Kanagawa Wave theme (https://github.com/rebelot/kanagawa.nvim) for the
+# Assignment 3 dashboard (assignment_3/app.py). Streamlit Community Cloud only
+# reads this file at the root of the repository, even when the app lives in a
+# subfolder.
+[theme]
+base = "dark"
+primaryColor = "#7E9CD8"              # crystalBlue
+backgroundColor = "#1F1F28"           # sumiInk3
+secondaryBackgroundColor = "#2A2A37"  # sumiInk4
+textColor = "#DCD7BA"                 # fujiWhite
+linkColor = "#7FB4CA"                 # springBlue
+borderColor = "#363646"               # sumiInk5
+dataframeBorderColor = "#363646"      # sumiInk5
+chartCategoricalColors = [
+    "#7E9CD8",  # crystalBlue
+    "#FFA066",  # surimiOrange
+    "#98BB6C",  # springGreen
+    "#957FB8",  # oniViolet
+    "#E46876",  # waveRed
+    "#7AA89F",  # waveAqua2
+    "#E6C384",  # carpYellow
+    "#D27E99",  # sakuraPink
+    "#7FB4CA",  # springBlue
+    "#727169",  # fujiGray
+]
+
+[theme.sidebar]
+backgroundColor = "#16161D"           # sumiInk0
+secondaryBackgroundColor = "#2A2A37"  # sumiInk4
