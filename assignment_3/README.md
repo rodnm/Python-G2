@@ -2,7 +2,7 @@
 
 Interactive dashboard, charts and maps for Group 02 (Fundamentos de Python, Diplomado PUCP). It studies the rainy season of 2023 (January 1 to May 31) in Peru, department by department.
 
-**Public dashboard:** _the link is added here right after the deployment_
+**Public dashboard:** https://emergencies-rainfall-peru-2023.streamlit.app
 
 ## 1. Question
 
